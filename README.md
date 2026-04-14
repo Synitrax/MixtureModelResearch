@@ -3,6 +3,10 @@
 # StatisticalResearchJMU
 A place to put my statistical research that I have been working on at james madison university
 
+
+![Theoretical Model Testing](images/TheoreticalTesting.PNG)
+![First Stock Test](images/stocktesting1.PNG)
+
 ### Credits & Citation
 * **Algorithm Design:** The `NVMunmix` logic and underlying methodology were developed by **Dr. Hasan Hamdan**.
 * **Implementation & Research:** The Gibbs Sampler, the comparative framework (EM vs. Bayesian vs. NVM), and the empirical study on US Stock returns were developed and implemented by **Nathan Carter**.
