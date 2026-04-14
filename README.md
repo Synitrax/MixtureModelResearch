@@ -1,4 +1,4 @@
-![Model Fit Comparison](images/Capture.png)
+![Model Fit Comparison](images/Capture.PNG)
 
 # StatisticalResearchJMU
 A place to put my statistical research that I have been working on at james madison university
