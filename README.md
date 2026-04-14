@@ -11,7 +11,7 @@ GitHub: [github.com/Synitrax/StatisticalResearchJMU](https://github.com/Synitrax
 
 **License**
 
-Copyright (c) 2026 Synitrax
+Copyright (c) 2026 Nathan Carter
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
