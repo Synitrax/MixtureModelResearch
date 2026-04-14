@@ -66,7 +66,7 @@ for(name in names(stock_list)) {
   
   # 3. Generate Densities
   # "True" is now the Empirical Density (Kernel Density Estimate)
-  true_dens_emp = density(y_real, from=min(xj_real), to=max(xj_real), n=200)$y
+  true_dens_emp = density(y_real, from=min(xj_real), to=max(xj_real), n=1000)$y
   
   bayesian_dens = sapply(xj_real, function(x) mean(dnorm(x, gibbs_out$mu, sqrt(gibbs_out$sig2))))
   em_dens       = predict(em_test, xj_real)
@@ -120,7 +120,7 @@ for(name in names(stock_list)) {
   
   # 3. Generate Densities
   # "True" is now the Empirical Density of the FUTURE year
-  true_dens_future = density(test_data, from=min(xj_test), to=max(xj_test), n=200)$y
+  true_dens_future = density(test_data, from=min(xj_test), to=max(xj_test), n=1000)$y
   
   # Bayesian: Average of Gaussians using TRAIN samples
   bayesian_dens_pred = sapply(xj_test, function(x) {
@@ -142,4 +142,3 @@ for(name in names(stock_list)) {
   cat("Winner:          ", winner, "\n")
   cat("----------------------------\n")
 }
-length(AMZN)
