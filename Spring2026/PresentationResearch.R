@@ -69,37 +69,59 @@ list(xxx, w, dim(xxx))
 
 }
 
-run_gibbs <- function(data, n_iter = 100, burn_in = 0) {
-  n = length(data)
-  y_bar = mean(data)
+run_gibbs <- function(data, x_grid, n_iter = 100, burn_in = 0) {
+  n <- length(data)
+  y_bar <- mean(data)
   
-  mu_0 = 0; tau_0_sq = 100 
-  a = 0.01; b = 0.01        
+  # Priors
+  mu_0 <- 0; tau_0_sq <- 100 
+  a <- 0.01; b <- 0.01        
   
-  mu_samples = numeric(n_iter)
-  sig2_samples = numeric(n_iter)
+  # Storage for parameters
+  mu_samples <- numeric(n_iter)
+  sig2_samples <- numeric(n_iter)
   
-  curr_mu = 0
-  curr_sig2 = 1
+  # Initial values
+  curr_mu <- 0
+  curr_sig2 <- 1
   
+  # 1. Gibbs Sampling Loop
   for(s in 1:n_iter) {
-    post_prec_mu = (1/tau_0_sq) + (n/curr_sig2)
-    post_mu_mean = ((mu_0/tau_0_sq) + (n*y_bar/curr_sig2)) / post_prec_mu
-    curr_mu = rnorm(1, post_mu_mean, sqrt(1/post_prec_mu))
+    # Update Mu (Normal)
+    post_prec_mu <- (1/tau_0_sq) + (n/curr_sig2)
+    post_mu_mean <- ((mu_0/tau_0_sq) + (n*y_bar/curr_sig2)) / post_prec_mu
+    curr_mu <- rnorm(1, post_mu_mean, sqrt(1/post_prec_mu))
     
-    curr_a = a + n/2
-    curr_b = b + sum((data - curr_mu)^2)/2
-    curr_sig2 = 1 / rgamma(1, shape = curr_a, rate = curr_b)
+    # Update Sigma^2 (Inverse-Gamma)
+    curr_a <- a + n/2
+    curr_b <- b + sum((data - curr_mu)^2)/2
+    curr_sig2 <- 1 / rgamma(1, shape = curr_a, rate = curr_b)
     
-    mu_samples[s] = curr_mu
-    sig2_samples[s] = curr_sig2
+    mu_samples[s] <- curr_mu
+    sig2_samples[s] <- curr_sig2
   }
   
-  return(list(mu = mu_samples[(burn_in+1):n_iter], 
-              sig2 = sig2_samples[(burn_in+1):n_iter]))
+  keep <- (burn_in + 1):n_iter
+  mu_final <- mu_samples[keep]
+  sig2_final <- sig2_samples[keep]
+  S <- length(keep)
+  
+  phi_matrix <- matrix(NA, nrow = length(x_grid), ncol = S)
+  
+  for(s in 1:S) {
+    phi_matrix[, s] <- dnorm(x_grid, mean = mu_final[s], sd = sqrt(sig2_final[s]))
+  }
+  
+  f_hat <- rowMeans(phi_matrix)
+  
+  return(list(
+    x = x_grid,
+    y = f_hat,
+    phi_full = phi_matrix, # The matrix you requested
+    mu = mu_final,
+    sig2 = sig2_final
+  ))
 }
-
-
 
 # Read file, explicitly telling R NOT to turn strings into factors
 stock_data_raw <- read.csv("stock_data.csv", row.names = 1, stringsAsFactors = FALSE)
@@ -145,10 +167,8 @@ for(name in names(stock_list)) {
   
   # --- MODEL 1: Bayesian (Gibbs) ---
   # Averaging over the posterior samples
-  gibbs_train = run_gibbs(train_data)
-  bayesian_pred = sapply(xj_test, function(x) {
-    mean(dnorm(x, gibbs_train$mu, sqrt(gibbs_train$sig2)))
-  })
+  gibbs_train = run_gibbs(train_data, xj_test)
+  bayesian_pred = gibbs_train$y
   
   # --- MODEL 2: EM (Mclust) ---
   # Single Gaussian fit via EM
@@ -261,10 +281,8 @@ for(name in names(stock_list)) {
   xj_test = seq(min(test_data), max(test_data), length.out = 1000)
   
   # --- MODEL 1: Bayesian (Gibbs) ---
-  gibbs_train = run_gibbs(train_data)
-  bayesian_pred = sapply(xj_test, function(x) {
-    mean(dnorm(x, gibbs_train$mu, sqrt(gibbs_train$sig2)))
-  })
+  gibbs_train = run_gibbs(train_data, xj_test)
+  bayesian_pred = gibbs_train$y
   
   # --- MODEL 2: EM (Mclust) ---
   em_train = densityMclust(train_data, G=1, verbose = FALSE, plot = FALSE)
