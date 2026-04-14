@@ -2,40 +2,59 @@ library(mclust)
 
 ################################################################################
 # GIBBS SAMPLING FUNCTION
-run_gibbs <- function(data, n_iter = 100, burn_in = 0) {
-  n = length(data)
-  y_bar = mean(data)
+run_gibbs <- function(data, x_grid, n_iter = 100, burn_in = 0) {
+  n <- length(data)
+  y_bar <- mean(data)
   
-  # Weak/Non-informative Priors
-  mu_0 = 0; tau_0_sq = 100 
-  a = 0.01; b = 0.01       
+  # Priors
+  mu_0 <- 0; tau_0_sq <- 100 
+  a <- 0.01; b <- 0.01        
   
-  mu_samples = numeric(n_iter)
-  sig2_samples = numeric(n_iter)
+  # Storage for parameters
+  mu_samples <- numeric(n_iter)
+  sig2_samples <- numeric(n_iter)
   
   # Initial values
-  curr_mu = 0
-  curr_sig2 = 1
+  curr_mu <- 0
+  curr_sig2 <- 1
   
+  # 1. Gibbs Sampling Loop
   for(s in 1:n_iter) {
-    # 1. Update Mu
-    post_prec_mu = (1/tau_0_sq) + (n/curr_sig2)
-    post_mu_mean = ((mu_0/tau_0_sq) + (n*y_bar/curr_sig2)) / post_prec_mu
-    curr_mu = rnorm(1, post_mu_mean, sqrt(1/post_prec_mu))
+    # Update Mu (Normal)
+    post_prec_mu <- (1/tau_0_sq) + (n/curr_sig2)
+    post_mu_mean <- ((mu_0/tau_0_sq) + (n*y_bar/curr_sig2)) / post_prec_mu
+    curr_mu <- rnorm(1, post_mu_mean, sqrt(1/post_prec_mu))
     
-    # 2. Update Sigma^2 (Inverse Gamma update)
-    curr_a = a + n/2
-    curr_b = b + sum((data - curr_mu)^2)/2
-    curr_sig2 = 1 / rgamma(1, shape = curr_a, rate = curr_b)
+    # Update Sigma^2 (Inverse-Gamma)
+    curr_a <- a + n/2
+    curr_b <- b + sum((data - curr_mu)^2)/2
+    curr_sig2 <- 1 / rgamma(1, shape = curr_a, rate = curr_b)
     
-    mu_samples[s] = curr_mu
-    sig2_samples[s] = curr_sig2
+    mu_samples[s] <- curr_mu
+    sig2_samples[s] <- curr_sig2
   }
   
-  return(list(mu = mu_samples[(burn_in+1):n_iter], 
-              sig2 = sig2_samples[(burn_in+1):n_iter]))
+  keep <- (burn_in + 1):n_iter
+  mu_final <- mu_samples[keep]
+  sig2_final <- sig2_samples[keep]
+  S <- length(keep)
+  
+  phi_matrix <- matrix(NA, nrow = length(x_grid), ncol = S)
+  
+  for(s in 1:S) {
+    phi_matrix[, s] <- dnorm(x_grid, mean = mu_final[s], sd = sqrt(sig2_final[s]))
+  }
+  
+  f_hat <- rowMeans(phi_matrix)
+  
+  return(list(
+    x = x_grid,
+    y = f_hat,
+    phi_full = phi_matrix,
+    mu = mu_final,
+    sig2 = sig2_final
+  ))
 }
-
 ################################################################################
 # SECTION: TEST INDIVIDUAL RUN
 ################################################################################
@@ -45,7 +64,7 @@ y_test = rnorm(test_n, test_mu, test_sigma)
 xj_test = seq(min(y_test)-5, max(y_test)+5, length.out = 100)
 
 # 1. Run Models
-gibbs_out = run_gibbs(y_test)
+gibbs_out = run_gibbs(y_test, xj_test)
 em_test = densityMclust(y_test, G=1, verbose = FALSE, plot = FALSE)
 
 # 2. Generate Densities
@@ -113,7 +132,3 @@ cat("\n--- Final Simulation Results ---\n")
 cat("Average MSE Bayesian (Gibbs):", mean(mse_results$Bayesian), "\n")
 cat("Average MSE EM:              ", mean(mse_results$EM), "\n")
 cat("Bayesian Win Rate:           ", mean(mse_results$Bayesian < mse_results$EM) * 100, "%\n")
-
-
-
-# Silverman’s Rule of Thumb
