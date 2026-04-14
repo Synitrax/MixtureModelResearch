@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# FUNCTION: NVMunmix
+# Theory & Algorithm: Dr. Hasan Hamdan
+# R Implementation & Optimization: Nathan Carter
+# -------------------------------------------------------------------------
 source("c:/qpsolve/qpsolve.R")
 
 
