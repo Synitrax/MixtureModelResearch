@@ -200,6 +200,7 @@ for(name in names(stock_list)) {
   # Optional: Refresh legend on one of the plots
   legend("topright", legend=c("Empirical", "Bayesian", "EM", "NVM"), 
          col=c("gray", "firebrick", "royalblue", "darkgreen"), lty=c(1,1,2,3), cex=0.7)
+                      
   # --- 3. EVALUATE ---
   # Generate true density of the same data for comparison
   # IMPORTANT: Set n=200 to match xj_test length for a fair MSE
@@ -334,4 +335,42 @@ for(name in names(stock_list)) {
   cat("MSE NVM:     ", round(mse_nvm, 6), "\n")
   cat("Winner:      ", winner, "\n")
   cat("----------------------------\n")
+
+  h <- hist(test_data, breaks = "FD", plot = FALSE)
+  observed <- h$counts
+  bin_breaks <- h$breaks
+
+  # 2. Function to get Expected Counts for a model
+  get_expected <- function(pred_func_or_values, breaks, total_n) {
+    # We integrate the density over each bin interval
+    # For simplicity, we can use the midpoint approximation
+    midpoints <- breaks[-1] - diff(breaks)/2
+  
+    # If using the pred vectors we already made:
+    # We need to map the pred values to the specific bin midpoints
+    # This is a simplified version for your presentation:
+    bin_probs <- sapply(1:(length(breaks)-1), function(i) {
+      # Use the area of the bin: height * width
+      # We'll use the mean density in that bin range
+      mean(pred_func_or_values[xj_test >= breaks[i] & xj_test <= breaks[i+1]]) * diff(breaks)[i]
+    })
+  
+    # Ensure probabilities don't result in 0 (to avoid division by zero)
+    bin_probs[bin_probs <= 0] <- 1e-10
+    return(bin_probs * total_n)
+  }
+  # 3. Calculate Chi-Square for each
+  exp_bayesian <- get_expected(bayesian_pred, bin_breaks, length(test_data))
+  exp_em       <- get_expected(em_pred, bin_breaks, length(test_data))
+  exp_nvm      <- get_expected(nvm_pred, bin_breaks, length(test_data))
+
+  chisq_bayesian <- sum((observed - exp_bayesian)^2 / exp_bayesian)
+  chisq_em       <- sum((observed - exp_em)^2 / exp_em)
+  chisq_nvm      <- sum((observed - exp_nvm)^2 / exp_nvm)
+
+  # --- Print Results ---
+  cat("Chi-Square Results:\n")
+  cat("Bayesian:", round(chisq_bayesian, 2), "\n")
+  cat("EM:      ", round(chisq_em, 2), "\n")
+  cat("NVM:     ", round(chisq_nvm, 2), "\n")
 }
