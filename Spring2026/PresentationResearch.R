@@ -232,16 +232,21 @@ for(name in names(stock_list)) {
     midpoints <- breaks[-1] - diff(breaks)/2
   
     # 2. Interpolate the model's density at those exact midpoints
-    # This prevents the "empty bin" NaN issue
+    # This maps your 1000-point model grid to the specific histogram bins
     interp_dens <- approx(x = xj_test, y = pred_values, xout = midpoints, rule = 2)$y
   
-    # 3. Probability = Density * Bin Width
+    # 3. Probability per bin = Density at midpoint * Width of bin
     bin_probs <- interp_dens * diff(breaks)
   
-    # 4. Ensure sum is 1 (normalization) and avoid absolute zeros
-    bin_probs <- bin_probs / sum(bin_probs)
+    # 4. Normalization (Crucial: ensures probabilities sum to 1)
+    if(sum(bin_probs) > 0) {
+      bin_probs <- bin_probs / sum(bin_probs)
+    }
+  
+    # 5. The "Floor": Replace absolute zeros to prevent Chi-Square explosion
     bin_probs[bin_probs <= 0] <- 1e-10
   
+    # 6. Return the expected counts
     return(bin_probs * total_n)
   }
   # 3. Calculate Chi-Square for each
@@ -345,16 +350,21 @@ for(name in names(stock_list)) {
     midpoints <- breaks[-1] - diff(breaks)/2
   
     # 2. Interpolate the model's density at those exact midpoints
-    # This prevents the "empty bin" NaN issue
+    # This maps your 1000-point model grid to the specific histogram bins
     interp_dens <- approx(x = xj_test, y = pred_values, xout = midpoints, rule = 2)$y
   
-    # 3. Probability = Density * Bin Width
+    # 3. Probability per bin = Density at midpoint * Width of bin
     bin_probs <- interp_dens * diff(breaks)
   
-    # 4. Ensure sum is 1 (normalization) and avoid absolute zeros
-    bin_probs <- bin_probs / sum(bin_probs)
+    # 4. Normalization (Crucial: ensures probabilities sum to 1)
+    if(sum(bin_probs) > 0) {
+      bin_probs <- bin_probs / sum(bin_probs)
+    }
+  
+    # 5. The "Floor": Replace absolute zeros to prevent Chi-Square explosion
     bin_probs[bin_probs <= 0] <- 1e-10
-    
+  
+    # 6. Return the expected counts
     return(bin_probs * total_n)
   }
   # 3. Calculate Chi-Square for each
