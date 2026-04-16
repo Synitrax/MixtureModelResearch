@@ -156,118 +156,86 @@ if(exists("stock_list")) {
 dev.new() # Opens one clean graphics window
 par(mfrow = c(2, 3))
 
-# Use the full range for both training and testing
 for(name in names(stock_list)) {
-  # Full data for both
+  # --- 1. DATA PREP ---
   train_data <- stock_list[[name]]
-  test_data  <- train_data # Testing on what we trained on
-  
-  # 1. Define Evaluation Grid based on the full data range
+  test_data  <- train_data 
   xj_test = seq(min(test_data), max(test_data), length.out = 1000)
   
-  # --- MODEL 1: Bayesian (Gibbs) ---
-  # Averaging over the posterior samples
+  # --- 2. MODEL FITS ---
+  # Bayesian (Gibbs)
   gibbs_train = run_gibbs(train_data, xj_test)
   bayesian_pred = gibbs_train$y
   
-  # --- MODEL 2: EM (Mclust) ---
-  # Single Gaussian fit via EM
+  # EM (Mclust)
   em_train = densityMclust(train_data, G=1, verbose = FALSE, plot = FALSE)
   em_pred  = predict(em_train, xj_test)
   
-  # --- MODEL 3: NVMunmix ---
+  # NVMunmix
   mu_grid <- seq(min(train_data), max(train_data), length.out = 25)
   r_grid  <- seq(sd(train_data)*0.3, sd(train_data)*1.2, length.out = 15)
-  
   nvm_res <- tryCatch({
     NVMunmix(train_data, b=0.4, rgrid=r_grid, mugrid=mu_grid, tol=0.001)
   }, error = function(e) return(NULL))
   
   if(!is.null(nvm_res)) {
     mix_df <- nvm_res[[1]]
-    nvm_pred <- sapply(xj_test, function(x) {
-      sum(mix_df[,3] * dnorm(x, mix_df[,1], mix_df[,2]))
-    })
+    nvm_pred <- sapply(xj_test, function(x) sum(mix_df[,3] * dnorm(x, mix_df[,1], mix_df[,2])))
   } else {
     nvm_pred <- rep(0, length(xj_test))
   }
-  # 5. Plotting (Add this inside the loop)
-  plot(density(test_data), main=paste("In-Sample Fit:", name), lwd=1, col="gray")
-  lines(xj_test, bayesian_pred, col="firebrick", lwd=2) # Bayesian
-  lines(xj_test, em_pred, col="royalblue", lwd=2, lty=2) # EM
-  lines(xj_test, nvm_pred, col="darkgreen", lwd=2, lty=3) # NVM
 
-  # Optional: Refresh legend on one of the plots
+  # --- 3. PLOTTING ---
+  plot(density(test_data), main=paste("In-Sample Fit:", name), lwd=1, col="gray")
+  lines(xj_test, bayesian_pred, col="firebrick", lwd=2)
+  lines(xj_test, em_pred, col="royalblue", lwd=2, lty=2)
+  lines(xj_test, nvm_pred, col="darkgreen", lwd=2, lty=3)
   legend("topright", legend=c("Empirical", "Bayesian", "EM", "NVM"), 
          col=c("gray", "firebrick", "royalblue", "darkgreen"), lty=c(1,1,2,3), cex=0.7)
-                      
-  # --- 3. EVALUATE ---
-  # Generate true density of the same data for comparison
-  # IMPORTANT: Set n=200 to match xj_test length for a fair MSE
+
+  # --- 4. EVALUATION: MSE ---
   true_dens_in = density(test_data, from=min(xj_test), to=max(xj_test), n=1000)$y
-  
   mse_bayesian = mean((bayesian_pred - true_dens_in)^2)
   mse_em       = mean((em_pred - true_dens_in)^2)
   mse_nvm      = mean((nvm_pred - true_dens_in)^2)
+
+  # --- 5. EVALUATION: LOG-LIKELIHOOD ---
+  # We use approx to find what the model predicted for every actual data point
+  ll_bayesian <- sum(log(approx(xj_test, bayesian_pred, xout = test_data, rule=2)$y + 1e-10))
+  ll_em       <- sum(log(predict(em_train, test_data) + 1e-10))
   
+  nvm_dens_at_data <- sapply(test_data, function(x) {
+    if(!is.null(nvm_res)) sum(mix_df[,3] * dnorm(x, mix_df[,1], mix_df[,2])) else 1e-10
+  })
+  ll_nvm <- sum(log(nvm_dens_at_data + 1e-10))
+
+  # --- 6. EVALUATION: K-S STATISTIC ---
+  ecd_func   <- ecdf(test_data)
+  actual_cdf <- ecd_func(xj_test)
+  dx         <- xj_test[2] - xj_test[1]
+  
+  # Calculate Model CDFs via integration
+  cdf_bayesian <- cumsum(bayesian_pred * dx); cdf_bayesian <- cdf_bayesian / max(cdf_bayesian)
+  cdf_em       <- cumsum(em_pred * dx);       cdf_em       <- cdf_em / max(cdf_em)
+  cdf_nvm      <- cumsum(nvm_pred * dx);      cdf_nvm      <- cdf_nvm / max(cdf_nvm)
+  
+  ks_bayesian <- max(abs(actual_cdf - cdf_bayesian))
+  ks_em       <- max(abs(actual_cdf - cdf_em))
+  ks_nvm      <- max(abs(actual_cdf - cdf_nvm))
+
+  # --- 7. PRINT SUMMARY TABLE ---
+  cat(paste("\nStock Analysis:", name, "\n"))
+  cat(sprintf("%-15s | %-12s | %-12s | %-12s\n", "Metric", "Bayesian", "EM", "NVM"))
+  cat(rep("-", 60), "\n")
+  cat(sprintf("%-15s | %-12.6f | %-12.6f | %-12.6f\n", "MSE (Lower Best)", mse_bayesian, mse_em, mse_nvm))
+  cat(sprintf("%-15s | %-12.2f | %-12.2f | %-12.2f\n", "Log-Lik (Higher)", ll_bayesian, ll_em, ll_nvm))
+  cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "K-S (Lower Best)", ks_bayesian, ks_em, ks_nvm))
+  
+  # Determine overall winner based on MSE
   mses <- c(Bayesian = mse_bayesian, EM = mse_em, NVM = mse_nvm)
-  winner <- names(which.min(mses))
-  
-  cat(paste("Stock:", name, "\n"))
-  cat("In-Sample MSE Bayesian:", round(mse_bayesian, 6), "\n")
-  cat("In-Sample MSE EM:      ", round(mse_em, 6), "\n")
-  cat("In-Sample MSE NVM:     ", round(mse_nvm, 6), "\n")
-  cat("In-Sample Winner:      ", winner, "\n")
-  cat("----------------------------\n")
-
-  # 1. Create Bins (Frequency) from the test data
-  # 'plot=FALSE' ensures we don't open more windows
-  h <- hist(test_data, breaks = "FD", plot = FALSE)
-  observed <- h$counts
-  bin_breaks <- h$breaks
-
-  # 2. Function to get Expected Counts for a model
-  get_expected <- function(pred_values, breaks, total_n, xj_test) {
-    # 1. Find the midpoints of the histogram bins
-    midpoints <- breaks[-1] - diff(breaks)/2
-  
-    # 2. Interpolate the model's density at those exact midpoints
-    # This maps your 1000-point model grid to the specific histogram bins
-    interp_dens <- approx(x = xj_test, y = pred_values, xout = midpoints, rule = 2)$y
-  
-    # 3. Probability per bin = Density at midpoint * Width of bin
-    bin_probs <- interp_dens * diff(breaks)
-  
-    # 4. Normalization (Crucial: ensures probabilities sum to 1)
-    if(sum(bin_probs) > 0) {
-      bin_probs <- bin_probs / sum(bin_probs)
-    }
-  
-    # 5. The "Floor": Replace absolute zeros to prevent Chi-Square explosion
-    bin_probs[bin_probs <= 0] <- 1e-10
-  
-    # 6. Return the expected counts
-    return(bin_probs * total_n)
-  }
-  # 3. Calculate Chi-Square for each
-  exp_bayesian <- get_expected(bayesian_pred, bin_breaks, length(test_data), xj_test)
-  exp_em       <- get_expected(em_pred, bin_breaks, length(test_data), xj_test)
-  exp_nvm      <- get_expected(nvm_pred, bin_breaks, length(test_data), xj_test)
-
-  valid_b <- exp_bayesian > 0 & exp_em > 0 & exp_nvm > 0
-
-  chisq_bayesian <- sum((observed[valid_b] - exp_bayesian[valid_b])^2 / exp_bayesian[valid_b])
-  chisq_em       <- sum((observed[valid_b] - exp_em[valid_b])^2 / exp_em[valid_b])
-  chisq_nvm      <- sum((observed[valid_b] - exp_nvm[valid_b])^2 / exp_nvm[valid_b])
-
-  # --- Print Results ---
-  cat("Chi-Square Results:\n")
-  cat("Bayesian:", round(chisq_bayesian, 2), "\n")
-  cat("EM:      ", round(chisq_em, 2), "\n")
-  cat("NVM:     ", round(chisq_nvm, 2), "\n")
+  cat("Winner (MSE):", names(which.min(mses)), "\n")
+  cat("------------------------------------------------------------\n")
 }
-
-
 ############################################################################
 dev.new() # Opens one clean graphics window
 par(mfrow = c(2, 3))
@@ -277,112 +245,86 @@ split_date <- as.Date("2025-04-03")
 cat("--- Out-of-Sample Performance: Bayesian vs EM vs NVM ---\n\n")
 
 for(name in names(stock_list)) {
-  # Extract numeric vector and match with dates
+  # --- 1. DATA PREP & SPLIT ---
   full_series <- stock_list[[name]]
   
   # Split based on the dates vector
   train_data <- full_series[returns_dates < split_date]
   test_data  <- full_series[returns_dates >= split_date]
   
-  # Define Evaluation Grid based on TEST data range
+  # Define Evaluation Grid based on TEST data range (where we evaluate performance)
   xj_test = seq(min(test_data), max(test_data), length.out = 1000)
   
-  # --- MODEL 1: Bayesian (Gibbs) ---
+  # --- 2. MODEL TRAINING (on train_data) & PREDICTION (on xj_test) ---
+  
+  # Bayesian (Gibbs)
   gibbs_train = run_gibbs(train_data, xj_test)
   bayesian_pred = gibbs_train$y
   
-  # --- MODEL 2: EM (Mclust) ---
+  # EM (Mclust) - Fit on train, predict on test grid
   em_train = densityMclust(train_data, G=1, verbose = FALSE, plot = FALSE)
   em_pred  = predict(em_train, xj_test)
   
-  # --- MODEL 3: NVMunmix ---
-  # We define the mu and sigma grids dynamically based on the stock's profile
+  # NVMunmix
   mu_grid <- seq(min(train_data), max(train_data), length.out = 20)
   r_grid  <- seq(sd(train_data)*0.5, sd(train_data)*1.5, length.out = 10)
   
   nvm_res <- tryCatch({
-    # Call your original NVMunmix function
     NVMunmix(train_data, b=0.4, rgrid=r_grid, mugrid=mu_grid, tol=0.001)
   }, error = function(e) return(NULL))
   
-  # Calculate NVM Density if successful
   if(!is.null(nvm_res)) {
     mix_df <- nvm_res[[1]]
-    nvm_pred <- sapply(xj_test, function(x) {
-      sum(mix_df[,3] * dnorm(x, mix_df[,1], mix_df[,2]))
-    })
+    nvm_pred <- sapply(xj_test, function(x) sum(mix_df[,3] * dnorm(x, mix_df[,1], mix_df[,2])))
   } else {
     nvm_pred <- rep(0, length(xj_test))
   }
 
-  # 5. Plotting (Add this inside the loop)
+  # --- 3. PLOTTING ---
   plot(density(test_data), main=paste("OOS Predict:", name), lwd=1, col="gray")
-  lines(xj_test, bayesian_pred, col="firebrick", lwd=2) # Bayesian
-  lines(xj_test, em_pred, col="royalblue", lwd=2, lty=2) # EM
-  lines(xj_test, nvm_pred, col="darkgreen", lwd=2, lty=3) # NVM
+  lines(xj_test, bayesian_pred, col="firebrick", lwd=2)
+  lines(xj_test, em_pred, col="royalblue", lwd=2, lty=2)
+  lines(xj_test, nvm_pred, col="darkgreen", lwd=2, lty=3)
+  legend("topright", legend=c("True Test Density", "Bayesian", "EM", "NVM"), 
+         col=c("gray", "firebrick", "royalblue", "darkgreen"), lty=c(1,1,2,3), cex=0.6)
 
-  # Optional: Refresh legend on one of the plots
-  legend("topright", legend=c("Empirical", "Bayesian", "EM", "NVM"), 
-         col=c("gray", "firebrick", "royalblue", "darkgreen"), lty=c(1,1,2,3), cex=0.7)
-
-  # --- 3. EVALUATE ---
+  # --- 4. EVALUATION: MSE ---
   true_dens_future = density(test_data, from=min(xj_test), to=max(xj_test), n=1000)$y
-  
   mse_bayesian = mean((bayesian_pred - true_dens_future)^2)
   mse_em       = mean((em_pred - true_dens_future)^2)
   mse_nvm      = mean((nvm_pred - true_dens_future)^2)
+
+  # --- 5. EVALUATION: LOG-LIKELIHOOD (on test_data) ---
+  ll_bayesian <- sum(log(approx(xj_test, bayesian_pred, xout = test_data, rule=2)$y + 1e-10))
+  ll_em       <- sum(log(predict(em_train, test_data) + 1e-10))
+  
+  nvm_dens_at_data <- sapply(test_data, function(x) {
+    if(!is.null(nvm_res)) sum(mix_df[,3] * dnorm(x, mix_df[,1], mix_df[,2])) else 1e-10
+  })
+  ll_nvm <- sum(log(nvm_dens_at_data + 1e-10))
+
+  # --- 6. EVALUATION: K-S STATISTIC ---
+  ecd_func   <- ecdf(test_data)
+  actual_cdf <- ecd_func(xj_test)
+  dx         <- xj_test[2] - xj_test[1]
+  
+  cdf_bayesian <- cumsum(bayesian_pred * dx); cdf_bayesian <- cdf_bayesian / (max(cdf_bayesian) + 1e-10)
+  cdf_em       <- cumsum(em_pred * dx);       cdf_em       <- cdf_em / (max(cdf_em) + 1e-10)
+  cdf_nvm      <- cumsum(nvm_pred * dx);      cdf_nvm      <- cdf_nvm / (max(cdf_nvm) + 1e-10)
+  
+  ks_bayesian <- max(abs(actual_cdf - cdf_bayesian))
+  ks_em       <- max(abs(actual_cdf - cdf_em))
+  ks_nvm      <- max(abs(actual_cdf - cdf_nvm))
+
+  # --- 7. PRINT SUMMARY TABLE ---
+  cat(paste("\nOOS ANALYSIS:", name, "\n"))
+  cat(sprintf("%-15s | %-12s | %-12s | %-12s\n", "Metric", "Bayesian", "EM", "NVM"))
+  cat(rep("-", 60), "\n")
+  cat(sprintf("%-15s | %-12.6f | %-12.6f | %-12.6f\n", "MSE (Lower)", mse_bayesian, mse_em, mse_nvm))
+  cat(sprintf("%-15s | %-12.2f | %-12.2f | %-12.2f\n", "Log-Lik (Higher)", ll_bayesian, ll_em, ll_nvm))
+  cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "K-S (Lower)", ks_bayesian, ks_em, ks_nvm))
   
   mses <- c(Bayesian = mse_bayesian, EM = mse_em, NVM = mse_nvm)
-  winner <- names(which.min(mses))
-  
-  cat(paste("Stock:", name, "\n"))
-  cat("MSE Bayesian:", round(mse_bayesian, 6), "\n")
-  cat("MSE EM:      ", round(mse_em, 6), "\n")
-  cat("MSE NVM:     ", round(mse_nvm, 6), "\n")
-  cat("Winner:      ", winner, "\n")
-  cat("----------------------------\n")
-
-  h <- hist(test_data, breaks = "FD", plot = FALSE)
-  observed <- h$counts
-  bin_breaks <- h$breaks
-
-  # 2. Function to get Expected Counts for a model
-  get_expected <- function(pred_values, breaks, total_n, xj_test) {
-    # 1. Find the midpoints of the histogram bins
-    midpoints <- breaks[-1] - diff(breaks)/2
-  
-    # 2. Interpolate the model's density at those exact midpoints
-    # This maps your 1000-point model grid to the specific histogram bins
-    interp_dens <- approx(x = xj_test, y = pred_values, xout = midpoints, rule = 2)$y
-  
-    # 3. Probability per bin = Density at midpoint * Width of bin
-    bin_probs <- interp_dens * diff(breaks)
-  
-    # 4. Normalization (Crucial: ensures probabilities sum to 1)
-    if(sum(bin_probs) > 0) {
-      bin_probs <- bin_probs / sum(bin_probs)
-    }
-  
-    # 5. The "Floor": Replace absolute zeros to prevent Chi-Square explosion
-    bin_probs[bin_probs <= 0] <- 1e-10
-  
-    # 6. Return the expected counts
-    return(bin_probs * total_n)
-  }
-  # 3. Calculate Chi-Square for each
-  exp_bayesian <- get_expected(bayesian_pred, bin_breaks, length(test_data), xj_test)
-  exp_em       <- get_expected(em_pred, bin_breaks, length(test_data), xj_test)
-  exp_nvm      <- get_expected(nvm_pred, bin_breaks, length(test_data), xj_test)
-
-  valid_b <- exp_bayesian > 0 & exp_em > 0 & exp_nvm > 0
-
-  chisq_bayesian <- sum((observed[valid_b] - exp_bayesian[valid_b])^2 / exp_bayesian[valid_b])
-  chisq_em       <- sum((observed[valid_b] - exp_em[valid_b])^2 / exp_em[valid_b])
-  chisq_nvm      <- sum((observed[valid_b] - exp_nvm[valid_b])^2 / exp_nvm[valid_b])
-
-  # --- Print Results ---
-  cat("Chi-Square Results:\n")
-  cat("Bayesian:", round(chisq_bayesian, 2), "\n")
-  cat("EM:      ", round(chisq_em, 2), "\n")
-  cat("NVM:     ", round(chisq_nvm, 2), "\n")
+  cat("OOS Winner (MSE):", names(which.min(mses)), "\n")
+  cat("------------------------------------------------------------\n")
 }
