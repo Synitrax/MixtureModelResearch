@@ -250,13 +250,15 @@ for(name in names(stock_list)) {
     return(bin_probs * total_n)
   }
   # 3. Calculate Chi-Square for each
-  exp_bayesian <- get_expected(bayesian_pred, bin_breaks, length(test_data))
-  exp_em       <- get_expected(em_pred, bin_breaks, length(test_data))
-  exp_nvm      <- get_expected(nvm_pred, bin_breaks, length(test_data))
+  exp_bayesian <- get_expected(bayesian_pred, bin_breaks, length(test_data), xj_test)
+  exp_em       <- get_expected(em_pred, bin_breaks, length(test_data), xj_test)
+  exp_nvm      <- get_expected(nvm_pred, bin_breaks, length(test_data), xj_test)
 
-  chisq_bayesian <- sum((observed - exp_bayesian)^2 / exp_bayesian)
-  chisq_em       <- sum((observed - exp_em)^2 / exp_em)
-  chisq_nvm      <- sum((observed - exp_nvm)^2 / exp_nvm)
+  valid_b <- exp_bayesian > 0 & exp_em > 0 & exp_nvm > 0
+
+  chisq_bayesian <- sum((observed[valid_b] - exp_bayesian[valid_b])^2 / exp_bayesian[valid_b])
+  chisq_em       <- sum((observed[valid_b] - exp_em[valid_b])^2 / exp_em[valid_b])
+  chisq_nvm      <- sum((observed[valid_b] - exp_nvm[valid_b])^2 / exp_nvm[valid_b])
 
   # --- Print Results ---
   cat("Chi-Square Results:\n")
@@ -368,13 +370,15 @@ for(name in names(stock_list)) {
     return(bin_probs * total_n)
   }
   # 3. Calculate Chi-Square for each
-  exp_bayesian <- get_expected(bayesian_pred, bin_breaks, length(test_data))
-  exp_em       <- get_expected(em_pred, bin_breaks, length(test_data))
-  exp_nvm      <- get_expected(nvm_pred, bin_breaks, length(test_data))
+  exp_bayesian <- get_expected(bayesian_pred, bin_breaks, length(test_data), xj_test)
+  exp_em       <- get_expected(em_pred, bin_breaks, length(test_data), xj_test)
+  exp_nvm      <- get_expected(nvm_pred, bin_breaks, length(test_data), xj_test)
 
-  chisq_bayesian <- sum((observed - exp_bayesian)^2 / exp_bayesian)
-  chisq_em       <- sum((observed - exp_em)^2 / exp_em)
-  chisq_nvm      <- sum((observed - exp_nvm)^2 / exp_nvm)
+  valid_b <- exp_bayesian > 0 & exp_em > 0 & exp_nvm > 0
+
+  chisq_bayesian <- sum((observed[valid_b] - exp_bayesian[valid_b])^2 / exp_bayesian[valid_b])
+  chisq_em       <- sum((observed[valid_b] - exp_em[valid_b])^2 / exp_em[valid_b])
+  chisq_nvm      <- sum((observed[valid_b] - exp_nvm[valid_b])^2 / exp_nvm[valid_b])
 
   # --- Print Results ---
   cat("Chi-Square Results:\n")
