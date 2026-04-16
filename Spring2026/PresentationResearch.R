@@ -227,22 +227,21 @@ for(name in names(stock_list)) {
   bin_breaks <- h$breaks
 
   # 2. Function to get Expected Counts for a model
-  get_expected <- function(pred_func_or_values, breaks, total_n) {
-    # We integrate the density over each bin interval
-    # For simplicity, we can use the midpoint approximation
+  get_expected <- function(pred_values, breaks, total_n, xj_test) {
+    # 1. Find the midpoints of the histogram bins
     midpoints <- breaks[-1] - diff(breaks)/2
   
-    # If using the pred vectors we already made:
-    # We need to map the pred values to the specific bin midpoints
-    # This is a simplified version for your presentation:
-    bin_probs <- sapply(1:(length(breaks)-1), function(i) {
-      # Use the area of the bin: height * width
-      # We'll use the mean density in that bin range
-      mean(pred_func_or_values[xj_test >= breaks[i] & xj_test <= breaks[i+1]]) * diff(breaks)[i]
-    })
+    # 2. Interpolate the model's density at those exact midpoints
+    # This prevents the "empty bin" NaN issue
+    interp_dens <- approx(x = xj_test, y = pred_values, xout = midpoints, rule = 2)$y
   
-    # Ensure probabilities don't result in 0 (to avoid division by zero)
+    # 3. Probability = Density * Bin Width
+    bin_probs <- interp_dens * diff(breaks)
+  
+    # 4. Ensure sum is 1 (normalization) and avoid absolute zeros
+    bin_probs <- bin_probs / sum(bin_probs)
     bin_probs[bin_probs <= 0] <- 1e-10
+  
     return(bin_probs * total_n)
   }
   # 3. Calculate Chi-Square for each
@@ -341,22 +340,21 @@ for(name in names(stock_list)) {
   bin_breaks <- h$breaks
 
   # 2. Function to get Expected Counts for a model
-  get_expected <- function(pred_func_or_values, breaks, total_n) {
-    # We integrate the density over each bin interval
-    # For simplicity, we can use the midpoint approximation
+  get_expected <- function(pred_values, breaks, total_n, xj_test) {
+    # 1. Find the midpoints of the histogram bins
     midpoints <- breaks[-1] - diff(breaks)/2
   
-    # If using the pred vectors we already made:
-    # We need to map the pred values to the specific bin midpoints
-    # This is a simplified version for your presentation:
-    bin_probs <- sapply(1:(length(breaks)-1), function(i) {
-      # Use the area of the bin: height * width
-      # We'll use the mean density in that bin range
-      mean(pred_func_or_values[xj_test >= breaks[i] & xj_test <= breaks[i+1]]) * diff(breaks)[i]
-    })
+    # 2. Interpolate the model's density at those exact midpoints
+    # This prevents the "empty bin" NaN issue
+    interp_dens <- approx(x = xj_test, y = pred_values, xout = midpoints, rule = 2)$y
   
-    # Ensure probabilities don't result in 0 (to avoid division by zero)
+    # 3. Probability = Density * Bin Width
+    bin_probs <- interp_dens * diff(breaks)
+  
+    # 4. Ensure sum is 1 (normalization) and avoid absolute zeros
+    bin_probs <- bin_probs / sum(bin_probs)
     bin_probs[bin_probs <= 0] <- 1e-10
+    
     return(bin_probs * total_n)
   }
   # 3. Calculate Chi-Square for each
