@@ -200,7 +200,6 @@ for(name in names(stock_list)) {
   mse_nvm      = mean((nvm_pred - true_dens_in)^2)
 
   # --- 5. EVALUATION: LOG-LIKELIHOOD ---
-  # We use approx to find what the model predicted for every actual data point
   ll_bayesian <- sum(log(approx(xj_test, bayesian_pred, xout = test_data, rule=2)$y + 1e-10))
   ll_em       <- sum(log(predict(em_train, test_data) + 1e-10))
   
@@ -214,26 +213,52 @@ for(name in names(stock_list)) {
   actual_cdf <- ecd_func(xj_test)
   dx         <- xj_test[2] - xj_test[1]
   
-  # Calculate Model CDFs via integration
-  cdf_bayesian <- cumsum(bayesian_pred * dx); cdf_bayesian <- cdf_bayesian / max(cdf_bayesian)
-  cdf_em       <- cumsum(em_pred * dx);       cdf_em       <- cdf_em / max(cdf_em)
-  cdf_nvm      <- cumsum(nvm_pred * dx);      cdf_nvm      <- cdf_nvm / max(cdf_nvm)
+  cdf_bayesian <- cumsum(bayesian_pred * dx); cdf_bayesian <- cdf_bayesian / (max(cdf_bayesian) + 1e-10)
+  cdf_em       <- cumsum(em_pred * dx);       cdf_em       <- cdf_em / (max(cdf_em) + 1e-10)
+  cdf_nvm      <- cumsum(nvm_pred * dx);      cdf_nvm      <- cdf_nvm / (max(cdf_nvm) + 1e-10)
   
   ks_bayesian <- max(abs(actual_cdf - cdf_bayesian))
   ks_em       <- max(abs(actual_cdf - cdf_em))
   ks_nvm      <- max(abs(actual_cdf - cdf_nvm))
 
+  # --- 8. EVALUATION: CHI-SQUARE ---
+  n_obs <- length(test_data)
+  k <- floor(sqrt(n_obs)) # Number of bins
+  breaks <- quantile(test_data, probs = seq(0, 1, length.out = k + 1))
+  observed_counts <- as.vector(table(cut(test_data, breaks = breaks, include.lowest = TRUE)))
+
+  get_expected <- function(pred_y, grid_x, breaks, n_total) {
+    probs <- sapply(1:(length(breaks)-1), function(i) {
+      bin_mask <- grid_x >= breaks[i] & grid_x <= breaks[i+1]
+      if(sum(bin_mask) < 2) return(1e-10)
+      bin_x <- grid_x[bin_mask]; bin_y <- pred_y[bin_mask]
+      sum(diff(bin_x) * (bin_y[-1] + bin_y[-length(bin_y)]) / 2)
+    })
+    probs <- probs / (sum(probs) + 1e-10)
+    return(probs * n_total)
+  }
+
+  exp_bayesian <- get_expected(bayesian_pred, xj_test, breaks, n_obs)
+  exp_em       <- get_expected(em_pred, xj_test, breaks, n_obs)
+  exp_nvm      <- get_expected(nvm_pred, xj_test, breaks, n_obs)
+
+  chisq_bayesian <- sum((observed_counts - exp_bayesian)^2 / (exp_bayesian + 1e-10))
+  chisq_em       <- sum((observed_counts - exp_em)^2 / (exp_em + 1e-10))
+  chisq_nvm      <- sum((observed_counts - exp_nvm)^2 / (exp_nvm + 1e-10))
+
   # --- 7. PRINT SUMMARY TABLE ---
-  cat(paste("\nStock Analysis:", name, "\n"))
+  cat(paste("\nStock Analysis:", name, "(IN-SAMPLE)\n"))
   cat(sprintf("%-15s | %-12s | %-12s | %-12s\n", "Metric", "Bayesian", "EM", "NVM"))
   cat(rep("-", 60), "\n")
-  cat(sprintf("%-15s | %-12.6f | %-12.6f | %-12.6f\n", "MSE (Lower Best)", mse_bayesian, mse_em, mse_nvm))
+  cat(sprintf("%-15s | %-12.6f | %-12.6f | %-12.6f\n", "MSE (Lower)", mse_bayesian, mse_em, mse_nvm))
   cat(sprintf("%-15s | %-12.2f | %-12.2f | %-12.2f\n", "Log-Lik (Higher)", ll_bayesian, ll_em, ll_nvm))
-  cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "K-S (Lower Best)", ks_bayesian, ks_em, ks_nvm))
+  cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "K-S (Lower)", ks_bayesian, ks_em, ks_nvm))
+  cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "Chi-Sq (Lower)", chisq_bayesian, chisq_em, chisq_nvm))
   
-  # Determine overall winner based on MSE
   mses <- c(Bayesian = mse_bayesian, EM = mse_em, NVM = mse_nvm)
-  cat("Winner (MSE):", names(which.min(mses)), "\n")
+  chisqs <- c(Bayesian = chisq_bayesian, EM = chisq_em, NVM = chisq_nvm)
+  cat("Winner (MSE):   ", names(which.min(mses)), "\n")
+  cat("Winner (Chi-Sq):", names(which.min(chisqs)), "\n")
   cat("------------------------------------------------------------\n")
 }
 ############################################################################
@@ -327,4 +352,52 @@ for(name in names(stock_list)) {
   mses <- c(Bayesian = mse_bayesian, EM = mse_em, NVM = mse_nvm)
   cat("OOS Winner (MSE):", names(which.min(mses)), "\n")
   cat("------------------------------------------------------------\n")
+
+  # --- 8. EVALUATION: CHI-SQUARE TEST ---
+  # Define number of bins (k). Rule of thumb: k approx sqrt(n) or enough for ~5-10 expected counts per bin.
+  n_obs <- length(test_data)
+  k <- floor(sqrt(n_obs)) 
+  
+  # Create bins based on quantiles of test_data to ensure coverage
+  breaks <- quantile(test_data, probs = seq(0, 1, length.out = k + 1))
+  observed_counts <- as.vector(table(cut(test_data, breaks = breaks, include.lowest = TRUE)))
+
+  # Helper function to get expected counts by integrating the predicted density over bins
+  get_expected <- function(pred_y, grid_x, breaks, n_total) {
+    # Create a step function/interpolation of the density
+    dens_func <- approx(grid_x, pred_y, xout = grid_x, rule = 2)$y
+    
+    # Calculate probabilities for each bin via trapezoidal integration
+    probs <- sapply(1:(length(breaks)-1), function(i) {
+      bin_mask <- grid_x >= breaks[i] & grid_x <= breaks[i+1]
+      if(sum(bin_mask) < 2) return(1e-10) # Fallback for very narrow bins
+      
+      # Area under the curve for this bin
+      bin_x <- grid_x[bin_mask]
+      bin_y <- pred_y[bin_mask]
+      width <- diff(bin_x)
+      heights <- (bin_y[-1] + bin_y[-length(bin_y)]) / 2
+      sum(width * heights)
+    })
+    
+    # Normalize probabilities to sum to 1 and scale to total observations
+    probs <- probs / sum(probs)
+    return(probs * n_total)
+  }
+
+  exp_bayesian <- get_expected(bayesian_pred, xj_test, breaks, n_obs)
+  exp_em       <- get_expected(em_pred, xj_test, breaks, n_obs)
+  exp_nvm      <- get_expected(nvm_pred, xj_test, breaks, n_obs)
+
+  # Calculate Chi-Square Statistic: sum((O - E)^2 / E)
+  chisq_bayesian <- sum((observed_counts - exp_bayesian)^2 / (exp_bayesian + 1e-10))
+  chisq_em       <- sum((observed_counts - exp_em)^2 / (exp_em + 1e-10))
+  chisq_nvm      <- sum((observed_counts - exp_nvm)^2 / (exp_nvm + 1e-10))
+
+  # Update your existing Section 7
+  cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "Chi-Sq (Lower)", chisq_bayesian, chisq_em, chisq_nvm))
+  
+  # Update your winner logic
+  chisqs <- c(Bayesian = chisq_bayesian, EM = chisq_em, NVM = chisq_nvm)
+  cat("OOS Winner (Chi-Sq):", names(which.min(chisqs)), "\n")                     
 }
