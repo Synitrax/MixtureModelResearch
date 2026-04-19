@@ -238,6 +238,18 @@ for(name in names(stock_list)) {
     return(probs * n_total)
   }
 
+  # --- 9. EVALUATION: BIC ---
+  n_obs <- length(test_data)
+  
+  # Define degrees of freedom (k) for each model
+  k_bayesian <- 2  # Mean and Variance
+  k_em       <- 2  # G=1: Mean and Variance
+  # For NVM, k is the number of components with significant weight
+  k_nvm      <- if(!is.null(nvm_res)) sum(mix_df[,3] > 1e-4) * 2 else 1 
+
+  bic_bayesian <- k_bayesian * log(n_obs) - 2 * ll_bayesian
+  bic_em       <- k_em * log(n_obs) - 2 * ll_em
+  bic_nvm      <- k_nvm * log(n_obs) - 2 * ll_nvm
   exp_bayesian <- get_expected(bayesian_pred, xj_test, breaks, n_obs)
   exp_em       <- get_expected(em_pred, xj_test, breaks, n_obs)
   exp_nvm      <- get_expected(nvm_pred, xj_test, breaks, n_obs)
@@ -254,11 +266,14 @@ for(name in names(stock_list)) {
   cat(sprintf("%-15s | %-12.2f | %-12.2f | %-12.2f\n", "Log-Lik (Higher)", ll_bayesian, ll_em, ll_nvm))
   cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "K-S (Lower)", ks_bayesian, ks_em, ks_nvm))
   cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "Chi-Sq (Lower)", chisq_bayesian, chisq_em, chisq_nvm))
+  cat(sprintf("%-15s | %-12.2f | %-12.2f | %-12.2f\n", "BIC (Lower)", bic_bayesian, bic_em, bic_nvm))
   
   mses <- c(Bayesian = mse_bayesian, EM = mse_em, NVM = mse_nvm)
   chisqs <- c(Bayesian = chisq_bayesian, EM = chisq_em, NVM = chisq_nvm)
+  bics <- c(Bayesian = bic_bayesian, EM = bic_em, NVM = bic_nvm)
   cat("Winner (MSE):   ", names(which.min(mses)), "\n")
   cat("Winner (Chi-Sq):", names(which.min(chisqs)), "\n")
+  cat("Winner (BIC):   ", names(which.min(bics)), "\n")
   cat("------------------------------------------------------------\n")
 }
 ############################################################################
@@ -341,18 +356,6 @@ for(name in names(stock_list)) {
   ks_em       <- max(abs(actual_cdf - cdf_em))
   ks_nvm      <- max(abs(actual_cdf - cdf_nvm))
 
-  # --- 7. PRINT SUMMARY TABLE ---
-  cat(paste("\nOOS ANALYSIS:", name, "\n"))
-  cat(sprintf("%-15s | %-12s | %-12s | %-12s\n", "Metric", "Bayesian", "EM", "NVM"))
-  cat(rep("-", 60), "\n")
-  cat(sprintf("%-15s | %-12.6f | %-12.6f | %-12.6f\n", "MSE (Lower)", mse_bayesian, mse_em, mse_nvm))
-  cat(sprintf("%-15s | %-12.2f | %-12.2f | %-12.2f\n", "Log-Lik (Higher)", ll_bayesian, ll_em, ll_nvm))
-  cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "K-S (Lower)", ks_bayesian, ks_em, ks_nvm))
-  
-  mses <- c(Bayesian = mse_bayesian, EM = mse_em, NVM = mse_nvm)
-  cat("OOS Winner (MSE):", names(which.min(mses)), "\n")
-  cat("------------------------------------------------------------\n")
-
   # --- 8. EVALUATION: CHI-SQUARE TEST ---
   # Define number of bins (k). Rule of thumb: k approx sqrt(n) or enough for ~5-10 expected counts per bin.
   n_obs <- length(test_data)
@@ -385,6 +388,20 @@ for(name in names(stock_list)) {
     return(probs * n_total)
   }
 
+  # --- 9. EVALUATION: BIC (OOS) ---
+  # We use the number of parameters (k) from the training phase 
+  # and the Log-Likelihood from the test data.
+  n_test <- length(test_data)
+  
+  # k-values (Adjust based on your model specifics)
+  k_bayesian <- 2  # Mean, Variance
+  k_em       <- 2  # G=1: Mean, Variance
+  # For NVM, we count components that had significant weight in the training result
+  k_nvm      <- if(!is.null(nvm_res)) sum(mix_df[,3] > 1e-4) * 2 else 1
+
+  bic_bayesian_oos <- k_bayesian * log(n_test) - 2 * ll_bayesian
+  bic_em_oos       <- k_em * log(n_test) - 2 * ll_em
+  bic_nvm_oos      <- k_nvm * log(n_test) - 2 * ll_nvm
   exp_bayesian <- get_expected(bayesian_pred, xj_test, breaks, n_obs)
   exp_em       <- get_expected(em_pred, xj_test, breaks, n_obs)
   exp_nvm      <- get_expected(nvm_pred, xj_test, breaks, n_obs)
@@ -394,10 +411,22 @@ for(name in names(stock_list)) {
   chisq_em       <- sum((observed_counts - exp_em)^2 / (exp_em + 1e-10))
   chisq_nvm      <- sum((observed_counts - exp_nvm)^2 / (exp_nvm + 1e-10))
 
-  # Update your existing Section 7
+  # --- PRINT SUMMARY TABLE ---
+  cat(paste("\nOOS ANALYSIS:", name, "\n"))
+  cat(sprintf("%-15s | %-12s | %-12s | %-12s\n", "Metric", "Bayesian", "EM", "NVM"))
+  cat(rep("-", 60), "\n")
+  cat(sprintf("%-15s | %-12.6f | %-12.6f | %-12.6f\n", "MSE (Lower)", mse_bayesian, mse_em, mse_nvm))
+  cat(sprintf("%-15s | %-12.2f | %-12.2f | %-12.2f\n", "Log-Lik (Higher)", ll_bayesian, ll_em, ll_nvm))
+  cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "K-S (Lower)", ks_bayesian, ks_em, ks_nvm))
   cat(sprintf("%-15s | %-12.4f | %-12.4f | %-12.4f\n", "Chi-Sq (Lower)", chisq_bayesian, chisq_em, chisq_nvm))
+  cat(sprintf("%-15s | %-12.2f | %-12.2f | %-12.2f\n", "BIC (Lower)", bic_bayesian_oos, bic_em_oos, bic_nvm_oos))
   
-  # Update your winner logic
+  mses   <- c(Bayesian = mse_bayesian, EM = mse_em, NVM = mse_nvm)
   chisqs <- c(Bayesian = chisq_bayesian, EM = chisq_em, NVM = chisq_nvm)
-  cat("OOS Winner (Chi-Sq):", names(which.min(chisqs)), "\n")                     
+  bics   <- c(Bayesian = bic_bayesian_oos, EM = bic_em_oos, NVM = bic_nvm_oos)
+  
+  cat("OOS Winner (MSE):   ", names(which.min(mses)), "\n")
+  cat("OOS Winner (Chi-Sq):", names(which.min(chisqs)), "\n")
+  cat("OOS Winner (BIC):   ", names(which.min(bics)), "\n")
+  cat("------------------------------------------------------------\n")
 }
