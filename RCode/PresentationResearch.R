@@ -117,7 +117,7 @@ run_gibbs <- function(data, x_grid, n_iter = 100, burn_in = 0) {
   return(list(
     x = x_grid,
     y = f_hat,
-    phi_full = phi_matrix, # The matrix you requested
+    phi_full = phi_matrix, 
     mu = mu_final,
     sig2 = sig2_final
   ))
@@ -153,7 +153,7 @@ if(exists("stock_list")) {
 }
 
 #########################################################################################################
-dev.new() # Opens one clean graphics window
+dev.new() 
 par(mfrow = c(2, 3))
 
 for(name in names(stock_list)) {
@@ -277,7 +277,7 @@ for(name in names(stock_list)) {
   cat("------------------------------------------------------------\n")
 }
 ############################################################################
-dev.new() # Opens one clean graphics window
+dev.new() 
 par(mfrow = c(2, 3))
 
 split_date <- as.Date("2025-04-03")
@@ -357,7 +357,7 @@ for(name in names(stock_list)) {
   ks_nvm      <- max(abs(actual_cdf - cdf_nvm))
 
   # --- 8. EVALUATION: CHI-SQUARE TEST ---
-  # Define number of bins (k). Rule of thumb: k approx sqrt(n) or enough for ~5-10 expected counts per bin.
+  # Define number of bins (k).
   n_obs <- length(test_data)
   k <- floor(sqrt(n_obs)) 
   
@@ -393,7 +393,7 @@ for(name in names(stock_list)) {
   # and the Log-Likelihood from the test data.
   n_test <- length(test_data)
   
-  # k-values (Adjust based on your model specifics)
+  # k-values
   k_bayesian <- 2  # Mean, Variance
   k_em       <- 2  # G=1: Mean, Variance
   # For NVM, we count components that had significant weight in the training result
