@@ -8,7 +8,7 @@ Welcome to the central repository for my statistical research conducted at **Jam
 ## 📊 Research Presentation
 This research was featured at the **MAA MD-VA-DC Section Meeting** in Spring 2026.
 
-* 📄 [**Download the Full Presentation (PDF)**](./Presentation/JMU_Stats_Research%20(1).pdf)
+* 📄 [**Download the Full Presentation (PDF)**](./Presentation/NC_HH_Presentation.pdf)
 
 ## 📈 Key Findings & Visuals
 
