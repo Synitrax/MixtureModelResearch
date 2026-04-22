@@ -19,7 +19,3 @@ GitHub: [github.com/Synitrax/StatisticalResearchJMU](https://github.com/Synitrax
 This research was presented at the **MAA MD VA DC Meeting** in spring 2026.
 
 * [**Download the Full Presentation (PDF)**](./Presentation/JMU_Stats_Research (1).pdf)
-
-<p align="center">
-  <img src="/Presentation/JMU_Stats_Research (1).pdf" width="600" alt="Presentation Slide Preview">
-</p>
