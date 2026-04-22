@@ -14,3 +14,12 @@ A place to put my statistical research that I have been working on at james madi
 **To cite this specific project:**
 Carter, N., & Hamdan, H. (2026). Normal Mixture Density Estimation for Major US Stocks: A Four-Year Empirical Study. 
 GitHub: [github.com/Synitrax/StatisticalResearchJMU](https://github.com/Synitrax/StatisticalResearchJMU)
+
+## 📊 Presentation
+This research was presented at the **MAA MD VA DC Meeting** in spring 2026.
+
+* [**Download the Full Presentation (PDF)**](./Presentation/JMU_Stats_Research (1).pdf)
+
+<p align="center">
+  <img src="/Presentation/JMU_Stats_Research (1).pdf" width="600" alt="Presentation Slide Preview">
+</p>
