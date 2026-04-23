@@ -69,58 +69,67 @@ list(xxx, w, dim(xxx))
 
 }
 
-run_gibbs <- function(data, x_grid, n_iter = 100, burn_in = 0) {
+run_gibbs <- function(data, x_grid, M = 2, n_iter = 100) {
   n <- length(data)
-  y_bar <- mean(data)
   
-  # Priors
-  mu_0 <- 0; tau_0_sq <- 100 
-  a <- 0.01; b <- 0.01        
-  
-  # Storage for parameters
-  mu_samples <- numeric(n_iter)
-  sig2_samples <- numeric(n_iter)
+  # Storage: Dimensions are [Iteration, Component]
+  mu_samples <- matrix(0, nrow = n_iter, ncol = M)
+  sig2_samples <- matrix(1, nrow = n_iter, ncol = M)
+  pi_samples <- matrix(1/M, nrow = n_iter, ncol = M) # Weights
   
   # Initial values
-  curr_mu <- 0
-  curr_sig2 <- 1
+  curr_mu <- seq(min(data), max(data), length.out = M)
+  curr_sig2 <- rep(var(data), M)
+  curr_pi <- rep(1/M, M)
   
-  # 1. Gibbs Sampling Loop
   for(s in 1:n_iter) {
-    # Update Mu (Normal)
-    post_prec_mu <- (1/tau_0_sq) + (n/curr_sig2)
-    post_mu_mean <- ((mu_0/tau_0_sq) + (n*y_bar/curr_sig2)) / post_prec_mu
-    curr_mu <- rnorm(1, post_mu_mean, sqrt(1/post_prec_mu))
+    # STEP 1: Assign data to components (Latent Variables Z)
+    # This calculates the probability each xi belongs to component m
+    probs <- matrix(0, n, M)
+    for(m in 1:M) {
+      probs[, m] <- curr_pi[m] * dnorm(data, curr_mu[m], sqrt(curr_sig2[m]))
+    }
+    probs <- probs / rowSums(probs)
+    # Randomly assign each point to a component based on probs
+    z <- apply(probs, 1, function(p) sample(1:M, size = 1, prob = p))
     
-    # Update Sigma^2 (Inverse-Gamma)
-    curr_a <- a + n/2
-    curr_b <- b + sum((data - curr_mu)^2)/2
-    curr_sig2 <- 1 / rgamma(1, shape = curr_a, rate = curr_b)
+    # STEP 2: Update parameters for each component m
+    for(m in 1:M) {
+      data_m <- data[z == m]
+      n_m <- length(data_m)
+      
+      if(n_m > 0) {
+        # Update Mu_m (Normal)
+        y_bar_m <- mean(data_m)
+        post_prec <- (1/100) + (n_m/curr_sig2[m])
+        post_mean <- ((0/100) + (n_m*y_bar_m/curr_sig2[m])) / post_prec
+        curr_mu[m] <- rnorm(1, post_mean, sqrt(1/post_prec))
+        
+        # Update Sigma2_m (Inverse-Gamma)
+        curr_a <- 0.01 + n_m/2
+        curr_b <- 0.01 + sum((data_m - curr_mu[m])^2)/2
+        curr_sig2[m] <- 1 / rgamma(1, shape = curr_a, rate = curr_b)
+      }
+    }
     
-    mu_samples[s] <- curr_mu
-    sig2_samples[s] <- curr_sig2
+    # STEP 3: Update weights (Dirichlet -> simplified for 2 components)  
+    mu_samples[s, ] <- curr_mu
+    sig2_samples[s, ] <- curr_sig2
   }
   
-  keep <- (burn_in + 1):n_iter
-  mu_final <- mu_samples[keep]
-  sig2_final <- sig2_samples[keep]
-  S <- length(keep)
-  
-  phi_matrix <- matrix(NA, nrow = length(x_grid), ncol = S)
-  
-  for(s in 1:S) {
-    phi_matrix[, s] <- dnorm(x_grid, mean = mu_final[s], sd = sqrt(sig2_final[s]))
+  # STEP 4: Density Estimation
+  # f_hat(x) = 1/S * Sum_s [ Sum_m (pi_m * phi(x | mu_sm, sig_sm)) ]
+  f_grid_samples <- matrix(0, nrow = length(x_grid), ncol = n_iter)
+  for(s in 1:n_iter) {
+    comp_densities <- matrix(0, length(x_grid), M)
+    for(m in 1:M) {
+      comp_densities[,m] <- (1/M) * dnorm(x_grid, mu_samples[s,m], sqrt(sig2_samples[s,m]))
+    }
+    f_grid_samples[, s] <- rowSums(comp_densities)
   }
   
-  f_hat <- rowMeans(phi_matrix)
-  
-  return(list(
-    x = x_grid,
-    y = f_hat,
-    phi_full = phi_matrix, 
-    mu = mu_final,
-    sig2 = sig2_final
-  ))
+  f_hat <- rowMeans(f_grid_samples)
+  return(list(x = x_grid, y = f_hat))
 }
 
 # Read file, explicitly telling R NOT to turn strings into factors
